@@ -66,6 +66,9 @@ async function main(){
   const map = L.map("map",{zoomControl:false,attributionControl:true});
   L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     {attribution:"Esri, Maxar"}).addTo(map);
+  // 위성 사진 위에 지명 (절대 규칙: 위성 사진 + 지명, 그림 지도 없음)
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+    {opacity:.9}).addTo(map);
   const ll = pts.map(p=>[p.lat,p.lon]);
   L.polyline(ll,{color:"#fff",weight:12,opacity:.25}).addTo(map);
   L.polyline(ll,{color:"#fff",weight:4,dashArray:"8 6"}).addTo(map);
