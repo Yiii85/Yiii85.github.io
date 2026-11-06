@@ -76,6 +76,36 @@ async function placeName(lat,lon){
     return nameCache[k] = n || null;
   }catch(e){ return nameCache[k]=null }
 }
+// 부채 구름 화면 (글귀는 사용자 허락받은 것, 2026-11-06)
+async function fanMode(c, map, ll, gone){
+  const to=[c.fan_to.lat, c.fan_to.lon];
+  L.polyline([ll[ll.length-1], to],{color:"#fff",weight:3,dashArray:"4 8",opacity:.8}).addTo(map);
+  L.marker(to,{icon:L.divIcon({className:"",html:'<div class="flag" style="background:#5a8fd8"></div>',iconSize:[22,22]})}).addTo(map);
+  map.fitBounds(L.latLngBounds(ll.concat([to])).pad(.5),{maxZoom:12});
+  const toName = await placeName(c.fan_to.lat, c.fan_to.lon);
+  const nowName = await placeName(c.now.lat, c.now.lon);
+  const msg=document.getElementById("msg"), num=document.getElementById("num"), sub=document.getElementById("sub");
+  document.getElementById("reads").textContent="";
+  document.getElementById("whenBtn").style.display="none";
+  const lines=[];
+  if (c.fan_arrived || new Date(c.fan_arrive_at) <= new Date()) {
+    msg.textContent = "구름이 도착했어요. "+(toName||"그곳")+" 하늘을 올려다보세요";
+    num.textContent = "";
+    sub.textContent = gone ? "이 구름은 이제 하늘에서 흩어졌어요" : "";
+  } else {
+    msg.textContent = "당신에게 낙서가 담긴 구름이 출발했어요";
+    const d=new Date(c.fan_arrive_at);
+    const f=new Intl.DateTimeFormat("ko-KR",{timeZone:"Asia/Seoul",month:"long",day:"numeric",hour:"numeric"}).format(d);
+    num.textContent = "도착 예정: "+f+"쯤";
+    num.style.fontSize="22px";
+    sub.textContent = nowName ? "지금 "+nowName+" 하늘을 지나고 있어요" : "지금 바다 위를 지나고 있어요";
+    lines.push("도착하기 전에 미리 앱을 받아 두세요");
+  }
+  document.getElementById("lines").innerHTML = lines.map(()=>"<li></li>").join("");
+  [...document.querySelectorAll("#lines li")].forEach((li,i)=>li.textContent=lines[i]);
+  document.getElementById("open").href = "clouddoodle://cloud/"+c.id;
+  document.getElementById("card").hidden=false;
+}
 function empty(t){document.getElementById("empty").hidden=false;document.getElementById("empty").textContent=t}
 async function main(){
   if(!id){empty("구름 링크가 올바르지 않아요");return}
@@ -102,6 +132,9 @@ async function main(){
   document.getElementById("sub").textContent = (c.place_name ? c.place_name+"에서 띄운 구름" : "어딘가에서 띄운 구름")
      + (gone ? " · 여행을 마치고 흩어졌어요" : " · 지금도 바람 따라 흘러가는 중");
   document.getElementById("reads").textContent = c.read_count > 0 ? c.read_count+"명이 이 구름을 읽었어요" : "아직 아무도 읽지 않았어요";
+  // 부채로 보낸 구름 링크: 받는 사람에게 "출발했어요 · 도착 예정 · 지금 어디쯤" (낙서 내용은 하늘에서 읽도록 숨김)
+  if (c.fan_count) { await fanMode(c, map, ll, gone); return; }
+
   // 지나온 곳 · 지금 위치 · 비를 만난 곳 · 흩어진 곳 (앱 여정 화면과 같은 내용, 지도에는 표시하지 않고 글로만)
   const lines = [];
   const passed = [];
