@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>구름의 여정 · 구름 위의 낙서</title>
 <meta property="og:title" content="구름의 여정">
-<meta property="og:description" content="바람이 받는 사람을 정하는 익명 낙서. 카톡은 1초, 구름은 사흘.">
+<meta property="og:description" content="바람이 받는 사람을 정하는 익명 낙서.">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
   html,body{margin:0;height:100%;font-family:-apple-system,"Apple SD Gothic Neo",sans-serif;background:#0d1b2a;color:#1b2430}
@@ -25,17 +25,26 @@
   @keyframes breathe{from{transform:scale(.8)}to{transform:scale(1.35)}}
   .cloud{font-size:34px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.5))}
   .flag{width:16px;height:16px;border-radius:50%;background:#f28c59;border:3px solid #fff}
+  .lines{margin:8px 0 0;padding:0;list-style:none}
+  .lines li{font-size:13.5px;color:#5b6573;margin:3px 0;line-height:1.4}
+  .play{position:fixed;top:calc(12px + env(safe-area-inset-top));right:12px;width:44px;height:44px;border-radius:12px;border:0;
+        background:rgba(20,30,45,.85);color:#fff;font-size:18px}
+  .when{margin-top:10px;font-size:14px;font-weight:600;color:#2c3a4d}
   .empty{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;text-align:center;padding:24px}
 </style>
 </head>
 <body>
 <div id="map"></div>
 <div class="brand">☁ 구름 위의 낙서</div>
+<button class="play" id="play" hidden aria-label="여정 다시 보기">▶</button>
 <div class="card" id="card" hidden>
   <p class="msg" id="msg"></p>
   <p class="num" id="num"></p>
   <p class="sub" id="sub"></p>
   <p class="sub" id="reads"></p>
+  <ul class="lines" id="lines"></ul>
+  <a class="btn ghost" id="whenBtn" style="display:block;margin-top:12px">내 하늘에는 언제 와?</a>
+  <p class="when" id="when" hidden></p>
   <div class="btns">
     <a class="btn primary" id="open">앱에서 열기</a>
     <a class="btn ghost" id="get" hidden>앱 받기</a><!-- 테스트플라이트/앱스토어 주소가 생기면 여기에 -->
@@ -56,6 +65,17 @@ function span(c){
   if (m < 2880) return Math.floor(m/60)+"시간";
   return Math.floor(m/1440)+"일 "+Math.floor((m%1440)/60)+"시간";
 }
+// 위치 → "경기도", "인천", "일본" (도·광역시 단위, 앱 여정 화면과 같은 굵기)
+const nameCache={};
+async function placeName(lat,lon){
+  const k=lat.toFixed(2)+","+lon.toFixed(2); if(k in nameCache) return nameCache[k];
+  try{
+    const j=await (await fetch("https://api.bigdatacloud.net/data/reverse-geocode-client?latitude="+lat+"&longitude="+lon+"&localityLanguage=ko")).json();
+    let n = j.countryCode==="KR" ? (j.principalSubdivision||"") : (j.countryName||"");
+    n = n.replace(/(특별자치시|특별자치도|광역시|특별시)$/,"").replace(/^대한민국$/,"");
+    return nameCache[k] = n || null;
+  }catch(e){ return nameCache[k]=null }
+}
 function empty(t){document.getElementById("empty").hidden=false;document.getElementById("empty").textContent=t}
 async function main(){
   if(!id){empty("구름 링크가 올바르지 않아요");return}
@@ -71,17 +91,70 @@ async function main(){
     {opacity:.9}).addTo(map);
   const ll = pts.map(p=>[p.lat,p.lon]);
   L.polyline(ll,{color:"#fff",weight:12,opacity:.25}).addTo(map);
-  L.polyline(ll,{color:"#fff",weight:4,dashArray:"8 6"}).addTo(map);
+  const line = L.polyline(ll,{color:"#fff",weight:4,dashArray:"8 6"}).addTo(map);
   L.marker(ll[0],{icon:L.divIcon({className:"",html:'<div class="flag"></div>',iconSize:[22,22]})}).addTo(map);
   (c.reads||[]).forEach(p=>L.marker([p.lat,p.lon],{icon:L.divIcon({className:"",html:'<div class="glow"></div>',iconSize:[28,28]})}).addTo(map));
-  L.marker(ll[ll.length-1],{icon:L.divIcon({className:"",html:'<div class="cloud">☁️</div>',iconSize:[40,40]})}).addTo(map);
+  const cloudMk = L.marker(ll[ll.length-1],{icon:L.divIcon({className:"",html:'<div class="cloud">☁️</div>',iconSize:[40,40]})}).addTo(map);
   map.fitBounds(L.latLngBounds(ll.concat((c.reads||[]).map(p=>[p.lat,p.lon]))).pad(.6),{maxZoom:12});
+  const gone = c.status !== "floating";
   document.getElementById("msg").textContent = c.message || (c.has_drawing ? "그림 낙서" : "빈 구름");
   document.getElementById("num").textContent = span(c)+" · "+kmText(km(c.start, c.now));   // 앱과 같은 방식(출발점→지금 자리)
-  const gone = c.status !== "floating";
   document.getElementById("sub").textContent = (c.place_name ? c.place_name+"에서 띄운 구름" : "어딘가에서 띄운 구름")
      + (gone ? " · 여행을 마치고 흩어졌어요" : " · 지금도 바람 따라 흘러가는 중");
   document.getElementById("reads").textContent = c.read_count > 0 ? c.read_count+"명이 이 구름을 읽었어요" : "아직 아무도 읽지 않았어요";
+  // 지나온 곳 · 지금 위치 · 비를 만난 곳 · 흩어진 곳 (앱 여정 화면과 같은 내용, 지도에는 표시하지 않고 글로만)
+  const lines = [];
+  const passed = [];
+  const add = n => { if (n && passed[passed.length-1] !== n) passed.push(n) };
+  const step = Math.max(1, Math.floor(c.path.length / 10));
+  const samples = [c.start, ...c.path.filter((_,i)=>i%step===0), c.now];
+  const names = await Promise.all(samples.map(p=>placeName(p.lat,p.lon)));
+  names.forEach(add);
+  const nowName = names[names.length-1];
+  if (passed.length >= 2) lines.push("🗺 "+passed.join(" → ")+" 하늘을 지나왔어요");
+  if (!gone && nowName) lines.push("📍 지금 "+nowName+" 하늘에 떠 있어요");
+  let was=false;
+  for (const p of c.path){ if(p.rained && !was){ const n=await placeName(p.lat,p.lon); lines.push("🌧 "+(n? n+" 하늘에서":"가는 길에")+" 비를 만나 낙서가 빗속에 내렸어요") } was=p.rained }
+  if (gone && nowName) lines.push("☁ "+nowName+" 하늘에서 흩어졌어요");
+  document.getElementById("lines").innerHTML = lines.map(t=>"<li></li>").join("");
+  [...document.querySelectorAll("#lines li")].forEach((li,i)=>li.textContent=lines[i]);
+
+  // 되감기 재생: 출발지부터 지금 자리까지 7초
+  const playBtn=document.getElementById("play"); playBtn.hidden=false;
+  playBtn.onclick=()=>{
+    const t0=performance.now(), dur=7000;
+    const cum=[0]; for(let i=1;i<ll.length;i++) cum.push(cum[i-1]+km({lat:ll[i-1][0],lon:ll[i-1][1]},{lat:ll[i][0],lon:ll[i][1]}));
+    const total=cum[cum.length-1]||1;
+    function frame(now){
+      const f=Math.min(1,(now-t0)/dur), d=f*total; let i=1; while(i<ll.length-1 && cum[i]<d) i++;
+      const k=(d-cum[i-1])/((cum[i]-cum[i-1])||1), a=ll[i-1], b=ll[i];
+      const pos=[a[0]+(b[0]-a[0])*k, a[1]+(b[1]-a[1])*k];
+      line.setLatLngs(ll.slice(0,i).concat([pos])); cloudMk.setLatLng(pos);
+      if(f<1) requestAnimationFrame(frame); else { line.setLatLngs(ll); cloudMk.setLatLng(ll[ll.length-1]) }
+    }
+    requestAnimationFrame(frame);
+  };
+
+  // 내 하늘에는 언제 오나: 지금 바람이 그대로 분다고 보고, 내 자리 5km 안에 들어오는 시각
+  const whenBtn=document.getElementById("whenBtn"), whenP=document.getElementById("when");
+  if (gone) whenBtn.hidden = true;
+  whenBtn.onclick=()=>{
+    if(!navigator.geolocation){ whenP.hidden=false; whenP.textContent="위치를 알 수 없어서 계산하지 못했어요"; return }
+    navigator.geolocation.getCurrentPosition(pos=>{
+      const me={lat:pos.coords.latitude, lon:pos.coords.longitude};
+      const pe=(c.now.lon-me.lon)*111320*Math.cos(me.lat*Math.PI/180), pn=(c.now.lat-me.lat)*111320;
+      const u=c.wind_u||0, v=c.wind_v||0, ww=u*u+v*v, r=5000, dist=Math.hypot(pe,pn);
+      whenP.hidden=false;
+      if (dist<=r){ whenP.textContent="지금 네 하늘 근처에 떠 있어요"; return }
+      if (ww<0.25){ whenP.textContent="바람이 거의 없어서 지금은 한자리에 머물러 있어요"; return }
+      const b=2*(pe*u+pn*v), disc=b*b-4*ww*(dist*dist-r*r);
+      const t= disc>=0 ? (-b-Math.sqrt(disc))/(2*ww) : -1;
+      if (t>0){ const h=t/3600; whenP.textContent="이 바람이면 약 {시간} 뒤 네 하늘에 닿아요".replace("{시간}", h<1 ? Math.max(5,Math.round(t/300)*5)+"분" : Math.round(h)+"시간") }
+      else { const tc=Math.max(0,-(pe*u+pn*v)/ww), cx=pe+u*tc, cy=pn+v*tc;
+             whenP.textContent="이 바람으로는 네 하늘을 비껴가요 (가장 가까울 때 {거리})".replace("{거리}", kmText(Math.hypot(cx,cy)/1000)) }
+    }, ()=>{ whenP.hidden=false; whenP.textContent="위치를 알 수 없어서 계산하지 못했어요" }, {enableHighAccuracy:false, timeout:10000});
+  };
+
   document.getElementById("open").href = "clouddoodle://cloud/"+c.id;
   document.getElementById("card").hidden=false;
 }
