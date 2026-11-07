@@ -47,9 +47,9 @@ function initMap(){
     new vw.CameraPosition(new vw.CoordZ(pos.lon, pos.lat, 300), new vw.Direction(0, -30, 0))
   );
   map = new vw.Map();
-  map.setMapId("vmap");
   map.setOption(opt);
-  map.start();
+  map.setMapId("vmap");
+  try{ map.start(); }catch(e){ console.warn('start', e); } // 브이월드 내부 오류가 나도 지도는 뜸
   const wait = setInterval(()=>{
     if (window.ws3d && ws3d.viewer && ws3d.viewer.camera){
       clearInterval(wait); ready = true;
