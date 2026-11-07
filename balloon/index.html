@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>열기구 시험</title>
+<script src="https://map.vworld.kr/js/webglMapInit.js.do?version=3.0&apiKey=674CE1E0-6B96-420A-A15F-B849EC7F90A9&domain=https://yiii85.github.io"></script>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:-apple-system,sans-serif;touch-action:none}
+  #vmap{position:fixed;inset:0}
+  .ui{position:fixed;left:0;right:0;z-index:10;display:flex;gap:8px;justify-content:center;padding:10px;pointer-events:none}
+  .ui *{pointer-events:auto}
+  #top{top:env(safe-area-inset-top)}
+  #bottom{bottom:calc(env(safe-area-inset-bottom) + 6px);flex-wrap:wrap}
+  button{font-size:16px;padding:12px 16px;border:0;border-radius:22px;background:rgba(0,0,0,.6);color:#fff}
+  button.on{background:#2f7cf6}
+  #info{color:#fff;background:rgba(0,0,0,.5);padding:6px 12px;border-radius:14px;font-size:14px}
+  #start{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:rgba(0,0,0,.55);color:#fff;text-align:center}
+  #start button{font-size:20px;padding:16px 30px;background:#2f7cf6}
+</style>
+</head>
+<body>
+<div id="vmap"></div>
+<div id="top" class="ui"><span id="info">준비 중</span></div>
+<div id="bottom" class="ui">
+  <button id="down">▼ 내려가기</button>
+  <button id="fwd">앞으로 ▶</button>
+  <button id="up">▲ 올라가기</button>
+  <button id="gyro" class="on">폰 방향 켜짐</button>
+</div>
+<div id="start">
+  <div>내 자리에서 열기구를 띄워요</div>
+  <button id="go">띄우기</button>
+  <div id="startMsg" style="font-size:13px;opacity:.8"></div>
+</div>
+<script>
+const HOME = {lon:126.6385, lat:37.3925}; // 위치를 못 받으면 송도 센트럴파크
+let pos = {lon:HOME.lon, lat:HOME.lat, h:2};
+let heading = 0, pitch = -10, target = {heading:0, pitch:-10};
+let gyroOn = true, gotGyro = false, holding = null, map = null, ready = false;
+const $ = id => document.getElementById(id);
+
+function initMap(){
+  const opt = new vw.MapOptions(
+    vw.BasemapType.GRAPHIC, "", vw.DensityType.BASIC, vw.DensityType.BASIC, false,
+    new vw.CameraPosition(new vw.CoordZ(pos.lon, pos.lat, 300), new vw.Direction(0, -30, 0)),
+    new vw.CameraPosition(new vw.CoordZ(pos.lon, pos.lat, 300), new vw.Direction(0, -30, 0))
+  );
+  map = new vw.Map();
+  map.setOption(opt);
+  map.setMapId("vmap");
+  map.start();
+  const wait = setInterval(()=>{
+    if (window.ws3d && ws3d.viewer && ws3d.viewer.camera){
+      clearInterval(wait); ready = true;
+      try{ ws3d.viewer.scene.screenSpaceCameraController.enableInputs = false; }catch(e){}
+      try{ map.setNavigationZoomVisible(false); }catch(e){}
+      requestAnimationFrame(loop);
+    }
+  }, 200);
+}
+
+function loop(){
+  const C = ws3d.common;
+  // 부드럽게 따라가기
+  let dh = ((target.heading - heading + 540) % 360) - 180;
+  heading = (heading + dh*0.2 + 360) % 360;
+  pitch += (target.pitch - pitch)*0.2;
+  if (holding === 'up') pos.h = Math.min(1500, pos.h + Math.max(1, pos.h*0.015));
+  if (holding === 'down') pos.h = Math.max(2, pos.h - Math.max(1, pos.h*0.015));
+  if (holding === 'fwd'){
+    const step = 2 + pos.h*0.01; // 높을수록 빨리
+    const r = heading*Math.PI/180;
+    pos.lat += step*Math.cos(r)/111320;
+    pos.lon += step*Math.sin(r)/(111320*Math.cos(pos.lat*Math.PI/180));
+  }
+  ws3d.viewer.camera.setView({
+    destination: C.Cartesian3.fromDegrees(pos.lon, pos.lat, pos.h),
+    orientation: {heading: C.Math.toRadians(heading), pitch: C.Math.toRadians(pitch), roll: 0}
+  });
+  $('info').textContent = `높이 ${Math.round(pos.h)}m · 방향 ${Math.round(heading)}° · 시선 ${Math.round(pitch)}°`;
+  requestAnimationFrame(loop);
+}
+
+function onOrient(e){
+  if (!gyroOn) return;
+  let hd = (typeof e.webkitCompassHeading === 'number') ? e.webkitCompassHeading
+         : (e.absolute && e.alpha != null ? 360 - e.alpha : null);
+  if (hd == null || e.beta == null) return;
+  gotGyro = true;
+  const so = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+  target.heading = (hd + so + 360) % 360;
+  // 폰을 세우면(beta 90) 수평, 눕히면(beta 0) 바로 아래
+  target.pitch = Math.max(-90, Math.min(40, e.beta - 90));
+}
+
+// 손가락으로 끌어 둘러보기 (폰 방향 꺼졌을 때)
+let drag = null;
+$('vmap').addEventListener('pointerdown', e=>{ drag = {x:e.clientX, y:e.clientY}; });
+window.addEventListener('pointerup', ()=> drag = null);
+window.addEventListener('pointermove', e=>{
+  if (!drag || (gyroOn && gotGyro)) return;
+  target.heading = (target.heading - (e.clientX-drag.x)*0.2 + 360) % 360;
+  target.pitch = Math.max(-90, Math.min(40, target.pitch + (e.clientY-drag.y)*0.2));
+  drag = {x:e.clientX, y:e.clientY};
+});
+
+function hold(id){
+  const b = $(id);
+  const s = e=>{ e.preventDefault(); holding = id; };
+  const t = ()=>{ if (holding === id) holding = null; };
+  b.addEventListener('pointerdown', s); b.addEventListener('pointerup', t);
+  b.addEventListener('pointerleave', t); b.addEventListener('pointercancel', t);
+}
+['up','down','fwd'].forEach(hold);
+$('gyro').onclick = ()=>{ gyroOn = !gyroOn; $('gyro').classList.toggle('on', gyroOn); $('gyro').textContent = gyroOn ? '폰 방향 켜짐' : '손가락으로 보기'; };
+
+$('go').onclick = async ()=>{
+  $('go').disabled = true;
+  try{
+    if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function'){
+      await DeviceOrientationEvent.requestPermission();
+    }
+  }catch(e){}
+  window.addEventListener('deviceorientationabsolute', onOrient);
+  window.addEventListener('deviceorientation', onOrient);
+  $('startMsg').textContent = '위치 확인 중…';
+  const begin = ()=>{
+    $('start').style.display = 'none';
+    // 땅에서 150m까지 천천히 떠오르기
+    pos.h = 2;
+    const rise = setInterval(()=>{ if (!ready) return; pos.h += (150 - pos.h)*0.03 + 0.3; if (pos.h >= 149) { pos.h = 150; clearInterval(rise);} }, 30);
+  };
+  if (navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(p=>{
+      pos.lon = p.coords.longitude; pos.lat = p.coords.latitude;
+      // 한국 밖이면 송도로
+      if (pos.lat < 33 || pos.lat > 39 || pos.lon < 124 || pos.lon > 132){ pos.lon = HOME.lon; pos.lat = HOME.lat; }
+      begin();
+    }, ()=>begin(), {enableHighAccuracy:true, timeout:8000});
+  } else begin();
+};
+
+window.addEventListener('load', ()=>{
+  try{ initMap(); $('info').textContent = '지도 불러오는 중'; }
+  catch(e){ $('info').textContent = '지도 오류: ' + e.message; }
+});
+</script>
+</body>
+</html>
