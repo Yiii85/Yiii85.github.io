@@ -142,7 +142,8 @@ async function main(){
   const cloudMk = L.marker(ll[ll.length-1],{icon:L.divIcon({className:"",html:'<div class="cloud">☁️</div>',iconSize:[40,40]})}).addTo(map);
   map.fitBounds(L.latLngBounds(ll.concat((c.reads||[]).map(p=>[p.lat,p.lon]))).pad(.6),{maxZoom:12});
   const gone = c.status !== "floating";
-  document.getElementById("msg").textContent = c.message || (c.has_drawing ? "그림 낙서" : "빈 구름");
+  // 2026-11-08: 흩어지면 낙서는 영원히 사라짐 (글귀 허락받음)
+  document.getElementById("msg").textContent = c.message || (c.has_drawing ? "그림 낙서" : (gone ? "흩어지며 낙서도 함께 사라졌어요" : "빈 구름"));
   document.getElementById("num").textContent = span(c)+" · "+kmText(km(c.start, c.now));   // 앱과 같은 방식(출발점→지금 자리)
   document.getElementById("sub").textContent = (c.place_name ? c.place_name+"에서 띄운 구름" : "어딘가에서 띄운 구름")
      + (gone ? " · 여행을 마치고 흩어졌어요" : " · 지금도 바람 따라 흘러가는 중");
