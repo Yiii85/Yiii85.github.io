@@ -38,7 +38,7 @@ const HOME = {lon:126.6385, lat:37.3925}; // 위치를 못 받으면 송도 센�
 let pos = {lon:HOME.lon, lat:HOME.lat, h:2};
 let heading = 0, pitch = -10, target = {heading:0, pitch:-10};
 let gyroOn = true, gotGyro = false, holding = null, map = null, ready = false;
-const $ = id => document.getElementById(id);
+const el = id => document.getElementById(id);
 
 function initMap(){
   const opt = new vw.MapOptions(
@@ -49,7 +49,7 @@ function initMap(){
   map = new vw.Map();
   map.setOption(opt);
   map.setMapId("vmap");
-  try{ map.start(); }catch(e){ console.warn('start', e); } // 브이월드 내부 오류가 나도 지도는 뜸
+  map.start();
   const wait = setInterval(()=>{
     if (window.ws3d && ws3d.viewer && ws3d.viewer.camera){
       clearInterval(wait); ready = true;
@@ -78,7 +78,7 @@ function loop(){
     destination: C.Cartesian3.fromDegrees(pos.lon, pos.lat, pos.h),
     orientation: {heading: C.Math.toRadians(heading), pitch: C.Math.toRadians(pitch), roll: 0}
   });
-  $('info').textContent = `높이 ${Math.round(pos.h)}m · 방향 ${Math.round(heading)}° · 시선 ${Math.round(pitch)}°`;
+  el('info').textContent = `높이 ${Math.round(pos.h)}m · 방향 ${Math.round(heading)}° · 시선 ${Math.round(pitch)}°`;
   requestAnimationFrame(loop);
 }
 
@@ -96,7 +96,7 @@ function onOrient(e){
 
 // 손가락으로 끌어 둘러보기 (폰 방향 꺼졌을 때)
 let drag = null;
-$('vmap').addEventListener('pointerdown', e=>{ drag = {x:e.clientX, y:e.clientY}; });
+el('vmap').addEventListener('pointerdown', e=>{ drag = {x:e.clientX, y:e.clientY}; });
 window.addEventListener('pointerup', ()=> drag = null);
 window.addEventListener('pointermove', e=>{
   if (!drag || (gyroOn && gotGyro)) return;
@@ -106,17 +106,17 @@ window.addEventListener('pointermove', e=>{
 });
 
 function hold(id){
-  const b = $(id);
+  const b = el(id);
   const s = e=>{ e.preventDefault(); holding = id; };
   const t = ()=>{ if (holding === id) holding = null; };
   b.addEventListener('pointerdown', s); b.addEventListener('pointerup', t);
   b.addEventListener('pointerleave', t); b.addEventListener('pointercancel', t);
 }
 ['up','down','fwd'].forEach(hold);
-$('gyro').onclick = ()=>{ gyroOn = !gyroOn; $('gyro').classList.toggle('on', gyroOn); $('gyro').textContent = gyroOn ? '폰 방향 켜짐' : '손가락으로 보기'; };
+el('gyro').onclick = ()=>{ gyroOn = !gyroOn; el('gyro').classList.toggle('on', gyroOn); el('gyro').textContent = gyroOn ? '폰 방향 켜짐' : '손가락으로 보기'; };
 
-$('go').onclick = async ()=>{
-  $('go').disabled = true;
+el('go').onclick = async ()=>{
+  el('go').disabled = true;
   try{
     if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function'){
       await DeviceOrientationEvent.requestPermission();
@@ -124,9 +124,9 @@ $('go').onclick = async ()=>{
   }catch(e){}
   window.addEventListener('deviceorientationabsolute', onOrient);
   window.addEventListener('deviceorientation', onOrient);
-  $('startMsg').textContent = '위치 확인 중…';
+  el('startMsg').textContent = '위치 확인 중…';
   const begin = ()=>{
-    $('start').style.display = 'none';
+    el('start').style.display = 'none';
     // 땅에서 150m까지 천천히 떠오르기
     pos.h = 2;
     const rise = setInterval(()=>{ if (!ready) return; pos.h += (150 - pos.h)*0.03 + 0.3; if (pos.h >= 149) { pos.h = 150; clearInterval(rise);} }, 30);
@@ -142,8 +142,8 @@ $('go').onclick = async ()=>{
 };
 
 window.addEventListener('load', ()=>{
-  try{ initMap(); $('info').textContent = '지도 불러오는 중'; }
-  catch(e){ $('info').textContent = '지도 오류: ' + e.message; }
+  try{ initMap(); el('info').textContent = '지도 불러오는 중'; }
+  catch(e){ el('info').textContent = '지도 오류: ' + e.message; }
 });
 </script>
 </body>
